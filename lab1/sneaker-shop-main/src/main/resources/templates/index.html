@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html xmlns:th="https://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${title}"/>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.3/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"
+            integrity="sha384-w76AqPfDkMBDXo30jS1Sgez6pr3x5MlQ1ZAGC+nuZB+EYdgRZgiwxhTBTkF7CXvN"
+            crossorigin="anonymous"></script>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+
+<body>
+<header th:insert="blocks/header.html :: header" class="p-3 text-bg-dark">
+</header>
+<main class="p-3 bg-light">
+    <div class="row">
+        <div class="col-md-2 p-4 bg-white rounded-4 m-lg-3">
+            <a href="/" class="d-flex align-items-center mb-3 mb-md-0 me-md-auto link-dark text-decoration-none text-center">
+                <span class="fs-4">Фильтр</span>
+            </a>
+            <hr>
+            <ul class="nav nav-pills flex-column mb-auto">
+                <li class="nav-item">
+                    <a class="nav-link" id="CASUAL">
+                        Повседневные кроссовки
+                    </a>
+                </li>
+                <li>
+                    <a class="nav-link" id="RUNNING">
+                        Беговые кроссовки
+                    </a>
+                </li>
+                <li>
+                    <a class="nav-link" id="LOW">
+                        Низкие кеды
+                    </a>
+                </li>
+                <li>
+                    <a class="nav-link" id="HIGH">
+                        Высокие кеды
+                    </a>
+                </li>
+            </ul>
+            <hr>
+            <div class="dropdown">
+                <a href="#" class="d-flex align-items-center link-dark text-decoration-none dropdown-toggle"
+                   data-bs-toggle="dropdown" aria-expanded="false">
+                    <strong>Сортировать по</strong>
+                    <a id="sort" class="link-primary">возрастанию цены</a>
+                </a>
+                <ul class="dropdown-menu text-small shadow">
+                    <li><a class="dropdown-item" id="asc">возрастанию цены</a></li>
+                    <li><a class="dropdown-item" id="desc">убыванию цены</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="col-md-9 album m-auto">
+            <div class="container">
+                <div class="row">
+                    <div th:each="el : ${items}" class="col-md-3 bg-white rounded-4 m-lg-3">
+                        <img th:src="${el.img_url}" class="img-fluid">
+                        <div th:text="${el.brand}"/>
+                        <div th:text="${el.model}"/>
+                        <h5 th:text="${el.price} + '₽'"/>
+                        <button th:id="${el.id}" type="submit" class="btn btn-m btn-block btn-primary my-3 px-4 buy">В корзину</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<div class="modal fade" id="chooseCityModal" role="dialog">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title">Выберите ваш город</h4>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-pills flex-column mb-auto">
+                    <li class="nav-item">
+                        <a class="nav-link city">Пермь</a>
+                    </li>
+                    <li>
+                        <a class="nav-link city">Москва</a>
+                    </li>
+                    <li>
+                        <a class="nav-link city">Санкт-Петербург</a>
+                    </li>
+                    <li>
+                        <a class="nav-link city">Екатеринбург</a>
+                    </li>
+                    <li>
+                        <a class="nav-link city">Казань</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://kit.fontawesome.com/c9a671a463.js" crossorigin="anonymous"></script>
+<script th:src="@{/js/filter.js}" type="module"></script>
+<script th:src="@{/js/city.js}" type="module"></script>
+<script th:src="@{/js/cart.js}" type="module"></script>
+</body>
+
+</html>

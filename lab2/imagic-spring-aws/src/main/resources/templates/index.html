@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iMagic - Best Image Hosting</title>
+
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <script th:src="@{/js/spinner.js}" type="text/javascript"></script>
+</head>
+<body>
+
+<header>
+    iMagic
+</header>
+
+<div class="container">
+    <h1>Upload an Image</h1>
+
+    <form class="upload-form" action="#" th:action="@{/upload}" method="post" enctype="multipart/form-data" onsubmit="showSpinner()">
+        <input type="file" id="image" name="image" accept="image/*" required />
+        <br />
+        <button type="submit">Upload</button>
+
+        <div id="spinner" class="loading-spinner"></div>
+    </form>
+
+    <h2>Recent Images</h2>
+
+    <div class="image-list">
+        <div class="grid-image" th:each="image : ${images}">
+                <img th:src="@{${image}}" alt="Uploaded Image" />
+                <a class="image-name" th:href="@{${image}}" th:text="${image}"></a>
+                <form class="delete-form" action="#" th:action="@{/delete/{name}(name=${image})}" method="get" onsubmit="showSpinner()">
+                    <button type="submit">Delete</button>
+                </form>
+        </div>
+    </div>
+</div>
+
+<footer>
+    &copy; 2024 iMagic. All rights reserved.
+</footer>
+
+</body>
+</html>

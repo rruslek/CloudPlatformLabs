@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Processed Image</title>
+</head>
+<body>
+<h1>Processed Image</h1>
+<img th:src="'data:image/png;base64,' + ${image}" alt="Processed Image">
+<a href="/">Upload another image</a>
+</body>
+</html>

@@ -1,7 +1,6 @@
 package com.example.imagicspringaws.controllers;
 
 import com.example.imagicspringaws.dto.Detected;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.apache.tomcat.util.http.fileupload.ByteArrayOutputStream;
@@ -10,6 +9,7 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,8 +20,8 @@ import org.springframework.ui.Model;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
-import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.util.*;
 import java.util.List;
 
 @CrossOrigin
@@ -46,92 +46,108 @@ public class ImagesController {
     }
 
     @PostMapping("/process")
-    public byte[] processImage(@RequestParam("file") ByteArrayResource file, Model model) throws IOException {
-//        if (file.isEmpty()) {
-//            model.addAttribute("error", "Please upload a valid image file.");
-//            return "upload";
-//        }
-        var extension = "jpg";
-        var label = this.detectOnImage(file);
-        var result = this.drawDetect(file, label.coordination(), extension);
-
-        return result;
-
-//        // Draw bounding boxes on the image
-//        BufferedImage image = ImageIO.read(new ByteArrayInputStream(file.getBytes()));
-//        drawBoundingBoxes(image, objectCoordinates);
-//
-//        // Convert modified image to byte array
-//        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-//        ImageIO.write(image, "png", outputStream);
-//        byte[] processedImageBytes = outputStream.toByteArray();
-//
-//        // Pass processed image to view
-//        String base64Image = java.util.Base64.getEncoder().encodeToString(processedImageBytes);
-//        model.addAttribute("image", base64Image);
-//
-//        return "result";
+    public String processImage(@RequestParam("file") MultipartFile file, Model model) throws IOException {
+        if (file.isEmpty()) {
+            model.addAttribute("error", "Please upload a valid image file.");
+            return "upload";
+        }
+        detectedObjects objects = this.detectOnImage(file);
+        var image = this.drawDetect(file, objects.getObjects());
+        String base64Image = java.util.Base64.getEncoder().encodeToString(image);
+        model.addAttribute("image", base64Image);
+        model.addAttribute("count", objects.getCount());
+        return "result";
     }
 
-    private Detected detectOnImage(ByteArrayResource file) throws JsonProcessingException {
-        var headers = new HttpHeaders();
+    private detectedObjects detectOnImage(MultipartFile file) throws IOException {
+        HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
-        var map = new LinkedMultiValueMap<String, Object>();
-        map.add("file", file);
-        map.add("meta", this.meta);
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        ByteArrayResource fileAsResource = new ByteArrayResource(file.getBytes()) {
+            @Override
+            public String getFilename() {
+                return file.getOriginalFilename();
+            }
+        };
+        body.add("file", fileAsResource);
+        body.add("meta", meta);
 
-        var request = new HttpEntity<>(map, headers);
+        HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
         var response = restTemplate.postForEntity(
-                apiUrl + "/api/v1/persons/recognize?oauth_token=" + apiKey+"&oauth_provider=mcs",
-                request,
+                apiUrl + "/api/v1/objects/detect?oauth_token=" + apiKey+"&oauth_provider=mcs",
+                requestEntity,
                 String.class
         );
-
+        System.out.println(response.getBody());
         var node = objectMapper.readTree(response.getBody());
         var detectedData = node
                 .get("body")
-                .get("object_labels")
+                .get("pedestrian_labels")
                 .get(0)
-                .get("labels")
-                .get(0);
+                .get("labels");
+        var countData = node
+                .get("body")
+                .get("pedestrian_labels")
+                .get(0)
+                .get("count_by_density");
 
-        return objectMapper.treeToValue(detectedData, Detected.class);
+        var data = objectMapper.treeToValue(detectedData, Detected[].class);
+        var count = objectMapper.treeToValue(countData, Integer.class);
+
+        return new detectedObjects(data, count);
+
     }
 
-    private void drawBoundingBoxes(BufferedImage image, List<List<Integer>> objectCoordinates) {
-        Graphics2D graphics = image.createGraphics();
-        graphics.setColor(Color.RED);
-        graphics.setStroke(new BasicStroke(2));
-
-        for (List<Integer> coordinates : objectCoordinates) {
-            int x = coordinates.get(0);
-            int y = coordinates.get(1);
-            int width = coordinates.get(2);
-            int height = coordinates.get(3);
-            graphics.drawRect(x, y, width, height);
-        }
-
-        graphics.dispose();
-    }
-    private byte[] drawDetect(ByteArrayResource file, List<Integer> measures, String extension) throws IOException {
+    private byte[] drawDetect(MultipartFile file, Detected[] objectsArr) throws IOException {
         var image = ImageIO.read(file.getInputStream());
         var graphics = image.createGraphics();
-
-        graphics.setColor(Color.RED);
         graphics.setStroke(stroke);
-        graphics.drawRect(
-                measures.get(0),
-                measures.get(1),
-                measures.get(2),
-                measures.get(3)
-        );
+        for (int i = 0; i < objectsArr.length; i++) {
+            graphics.setColor(randomColor());
+            List<Integer> measures = objectsArr[i].coordination();
+            graphics.drawRect(
+                    measures.get(0),
+                    measures.get(1),
+                    measures.get(2)-measures.get(0),
+                    measures.get(3)-measures.get(1)
+            );
+            //String name = objectsArr[i].name();
+            //graphics.drawString(name, (measures.get(2) + measures.get(0)) / 2, (measures.get(3) + measures.get(1)) / 2);
+        }
         graphics.dispose();
 
         var outputStream = new ByteArrayOutputStream();
-        ImageIO.write(image, extension, outputStream);
+        ImageIO.write(image, "jpg", outputStream);
 
         return outputStream.toByteArray();
+    }
+
+    public Color randomColor() {
+        Random random = new Random();
+        int r = random.nextInt(255);
+        int g = random.nextInt(255);
+        int b = random.nextInt(255);
+        float[] hsb = new float[3];
+        Color.RGBtoHSB(r, g, b, hsb);
+        return Color.getHSBColor(hsb[0], hsb[1], hsb[2]);
+    }
+    final class detectedObjects {
+        private final Detected[] objects;
+        private final int count;
+
+        public detectedObjects(Detected[] objects, int count) {
+            this.objects = objects;
+            this.count = count;
+        }
+
+        public Detected[] getObjects() {
+            return objects;
+        }
+
+        public int getCount() {
+            return count;
+        }
     }
 }

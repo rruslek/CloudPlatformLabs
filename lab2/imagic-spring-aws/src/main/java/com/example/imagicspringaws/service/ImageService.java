@@ -15,6 +15,7 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.utils.IoUtils;
 
+
 import java.io.IOException;
 import java.util.List;
 
@@ -65,15 +66,6 @@ public class ImageService {
                 .build();
 
         this.client.putObject(request, RequestBody.fromBytes(file.getBytes()));
-    }
-
-    public void uploadFile(byte[] file, String fileName) throws IOException {
-        var request = PutObjectRequest.builder()
-                .bucket(this.bucketName)
-                .key(fileName)
-                .build();
-
-        this.client.putObject(request, RequestBody.fromBytes(file));
     }
 
     public void deleteFile(String fileName) {

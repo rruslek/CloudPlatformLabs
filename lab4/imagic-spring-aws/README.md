@@ -3,17 +3,19 @@
 
 ### Содержание
 
-[1. Постановка задачи](#setTask)
+[1. Постановка задачи](#task)
 
-[2. Решение](#decision)
+[2. Решение](#implementation)
 
-## <a id="setTask" style="color: lightgrey">1. Постановка задачи
+[3. Выводы](#conclusion)
+
+## <a id="task" style="color: lightgrey">1. Постановка задачи
 
 - #### Пройти "Interactive Tutorial" по Kubernetes/Minikube
 - #### Создать yaml файлы для работы с Kubernetes
 - #### Управлять развертыванием контейнеров с использованием kubectl
 
-## <a id="decision" style="color: lightgrey">2. Решение</a>
+## <a id="implementation" style="color: lightgrey">2. Решение</a>
 
 Для работы было использовано веб-приложение, разработанное в рамках лабораторных работы №3.
 
@@ -138,3 +140,5 @@ kubectl dashboard
 ```cmd
 minikube tunnel
 ```
+
+## <a id="conclusion" style="color: lightgrey">3. Выводы</a>

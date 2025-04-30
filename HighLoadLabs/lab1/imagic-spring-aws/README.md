@@ -1,5 +1,5 @@
-# Лабораторная работа №4
-## Реализация запуска приложения в Kubernetes
+# Лабораторная работа №1
+## Реализация балансировки и отказоустойчивости с использованием Nginx
 
 ### Содержание
 
@@ -11,18 +11,20 @@
 
 ## <a id="task" style="color: lightgrey">1. Постановка задачи
 
-- #### Пройти "Interactive Tutorial" по Kubernetes/Minikube
-- #### Создать yaml файлы для работы с Kubernetes
-- #### Управлять развертыванием контейнеров с использованием kubectl
+- #### Разработать приложение, содержащее HTTP endpoint, при обращении к которому возвращается ответ вида {“counter”: “1”}. При каждом обращении счетчик должен увеличиваться.
+- #### Запустить несколько экземпляров данного приложения на разных портах (возможно использование Docker, но не обязательно)
+- #### Запустить Nginx, который балансирует нагрузку между запущенными веб-сервисами
+- #### Реализовать и проанализировать различные алгоритмы балансировки: round robin, hash, least conn, least time, random, и т.д.
+- #### Реализовать и проанализировать функционал реализации отказоустойчивости (fail_timeout, max_fails) при отключении одного или нескольких веб-сервисов
+- #### Проанализировать результаты нагрузочного тестирования с использованием Apache benchmark и/или Apache JMeter.
 
 ## <a id="implementation" style="color: lightgrey">2. Решение</a>
 
-Для работы было использовано веб-приложение, разработанное в рамках лабораторных работы №3.
+Для работы было разработано проостое приложение, реализующее счетчик.
 
-Перед использованием Minikube, необходимо было создать Docker Image и сделать "push" в Docker Hub.
-
-Для этого был создан Dockerfile:
-
+Чтобы запустить несколько экземпляров этого приложения был созданы файлы Dockerfile и docker-compose.yml:
+ 
+- **Dockerfile**
 ```Dockerfile
 FROM openjdk:21-jdk
 
@@ -33,112 +35,121 @@ EXPOSE 8080
 ENTRYPOINT ["java","-jar","/app.jar"]
 ```
 
-Далее были использованы команды :
+- **docker-compose.yml**
+```yml
+services:
+  app1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
 
-- **сборка JAR файла**
+  app2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8082"
+    environment:
+      - PORT=8082
 
+  app3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8083"
+    environment:
+      - PORT=8083
+
+```
+
+Для запуска контейнера была использована команда:
 ```cmd
-mvn clean package
+docker-compose up
 ```
 
-- **создание Docker Image**
 
+Далее был запущен nginx:
 ```cmd
-docker build -t rruslek/imagic-spring .
-```
-
-- **push в Docker Hub**
-
-```cmd
-docker push rruslek/imagic-spring
-```
-
-После подготовки необходимо было создать два файла:
-
-- **service.yaml**
-
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: imagic
-
-spec:
-  type: LoadBalancer
-  selector:
-    app: imagic
-  ports:
-    - protocol: TCP
-      name: http-traffic
-      port: 8080
-      targetPort: 8080
-```
-
-- **deployment.yaml**
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: imagic
-
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: imagic
-  template:
-    metadata:
-      labels:
-        app: imagic
-    spec:
-      containers:
-        - name: imagic
-          image: rruslek/imagic-spring
-          ports:
-            - containerPort: 8080
-```
-
-После их создания, а также предварительно установив Minikube, можно приступать к запуску приложения в Kubernetes.
-
-Команды для работы c Minikube:
-
-- **запуск minikube**
-
-```cmd
-minikube start
-```
-
-- **остановка minikube**
-
-```cmd
-minikube stop
-```
-
-- **применение файлов**
-
-```cmd
-kubectl apply -f deployment.yaml
-kubectl apply -f service.yaml
+start nginx
 ```
 
 
-- **просмотр логов**
+- **Конфигурация nginx.conf**
+```conf
+worker_processes 1;
 
-```cmd
-kubectl logs <pod-name>
+events {
+    worker_connections 1024;
+}
+
+http {
+    upstream spring_app {
+        //СЮДА ВСТАВИТЬ АЛГОРИТМ БАЛАНСИРОВКИ (least_conn, round_robin, random и т.д)
+		
+        server 127.0.0.1:8081;
+        server 127.0.0.1:8082;
+        server 127.0.0.1:8083;
+    }
+
+    server {
+        listen 8080;
+
+        location / {
+            proxy_pass http://spring_app;
+
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+}
 ```
 
-- **просмотр панели управления**
+После этого были использованы и проанализированы различные алгоритмы балансировки:
+- #### round-robin — запросы к серверам приложений распределяются по кругу
+- #### least-connected — следующий запрос назначается серверу с наименьшим количеством активных подключений
+- #### hash — позволяет распределять запросы пользователь по заданному параметру (URI, IP, порт)
+- #### least-time — для каждого запроса выбирается сервер с наименьшей средней задержкой (время до первого или последнего байта) и наименьшим количеством активных подключений 
+- #### random — запросы распределяются случайно (также можно использовать вместе с least-time и least-connected)
 
-```cmd
-kubectl dashboard
+Также была реализована конфигурация для проверки отказоустойчивости:
+
+- **nginx.conf**
+```conf 
+http {
+    upstream spring_app {
+        //СЮДА ВСТАВИТЬ АЛГОРИТМ БАЛАНСИРОВКИ (least_conn, round_robin, random и т.д)
+
+        server 127.0.0.1:8081 max_fails=2 fail_timeout=5s;
+        server 127.0.0.1:8082 max_fails=2 fail_timeout=5s;
+        server 127.0.0.1:8083 max_fails=2 fail_timeout=5s;
+    }
+
+    server {
+        listen 8080;
+
+        location / {
+            proxy_pass http://spring_app;
+
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+}
 ```
 
-- **работа с локальными запросами**
+После этого были проведены тесты нагрузочного тестирования с помощью Apache JMeter
 
-```cmd
-minikube tunnel
-```
+![](C:\Users\user\Documents\CloudPlatformLabs\HighLoadLabs\lab1\imagic-spring-aws\tests.png)
 
 ## <a id="conclusion" style="color: lightgrey">3. Выводы</a>

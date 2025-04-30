@@ -1,5 +1,5 @@
-# Лабораторная работа №4
-## Реализация запуска приложения в Kubernetes
+# Лабораторная работа №3
+## Реализация очередей задач с использованием очередей Redis
 
 ### Содержание
 
@@ -11,134 +11,226 @@
 
 ## <a id="task" style="color: lightgrey">1. Постановка задачи
 
-- #### Пройти "Interactive Tutorial" по Kubernetes/Minikube
-- #### Создать yaml файлы для работы с Kubernetes
-- #### Управлять развертыванием контейнеров с использованием kubectl
+- #### Запустить redis
+- #### Реализовать веб-сервис, который с неравномерной скоростью записывает сообщения в очередь. Например, загружает данные из файла и записывает их в очередь.
+- #### Реализовать веб-сервис, который с определенной задержкой обрабатывает данные в очереди.
 
 ## <a id="implementation" style="color: lightgrey">2. Решение</a>
 
-Для работы было использовано веб-приложение, разработанное в рамках лабораторных работы №3.
+Для работы было разработано веб-приложение, которое использует Redis для шифрования/дешифрования текста с помощью алгоритма AES.
 
-Перед использованием Minikube, необходимо было создать Docker Image и сделать "push" в Docker Hub.
+Были реализованы следующие файлы:
 
-Для этого был создан Dockerfile:
+- **Конфигурация RedisConfig**
+```java
+@Configuration
+public class RedisConfig {
 
-```Dockerfile
-FROM openjdk:21-jdk
-
-ARG JAR_FILE=target/*.jar
-COPY ${JAR_FILE} app.jar
-
-EXPOSE 8080
-ENTRYPOINT ["java","-jar","/app.jar"]
+    @Bean
+    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory redisConnectionFactory) {
+        RedisTemplate<String, Object> template = new RedisTemplate<>();
+        template.setConnectionFactory(redisConnectionFactory);
+        template.setKeySerializer(new StringRedisSerializer());
+        template.setValueSerializer(new JdkSerializationRedisSerializer()); //Важно для сериализации объектов
+        template.setHashKeySerializer(new StringRedisSerializer());
+        template.setHashValueSerializer(new JdkSerializationRedisSerializer());
+        template.afterPropertiesSet();
+        return template;
+    }
+}
 ```
 
-Далее были использованы команды :
+- **Контроллер ProducerController**
+```java
+@Controller
+public class ProducerController {
 
-- **сборка JAR файла**
+    private static final String ENCRYPTION_QUEUE = "encryption_queue";
+    private static final String DECRYPTION_QUEUE = "decryption_queue";
 
-```cmd
-mvn clean package
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @GetMapping("/")
+    public String showForm() {
+        return "index";
+    }
+
+    @PostMapping("/encrypt")
+    public String encryptText(@RequestParam("text") String text, @RequestParam("key") String key, Model model) throws InterruptedException {
+        String requestId = UUID.randomUUID().toString();
+        CryptoRequest request = new CryptoRequest(text, key, requestId);
+        System.out.println(requestId);
+
+        Random random = new Random();
+        Thread.sleep(random.nextInt(300));
+
+        redisTemplate.opsForList().leftPush(ENCRYPTION_QUEUE, request);
+        model.addAttribute("message", "Текст отправлен на шифрование.");
+        model.addAttribute("requestId", requestId);
+        return "process";
+    }
+
+    @PostMapping("/decrypt")
+    public String decryptText(@RequestParam("text") String text, @RequestParam("key") String key, Model model) throws InterruptedException {
+        String requestId = UUID.randomUUID().toString();
+        CryptoRequest request = new CryptoRequest(text, key, requestId);
+
+        Random random = new Random();
+        Thread.sleep(random.nextInt(300));
+
+        redisTemplate.opsForList().leftPush(DECRYPTION_QUEUE, request);
+        model.addAttribute("message", "Текст отправлен на дешифрование.");
+        model.addAttribute("requestId", requestId);
+        return "process";
+    }
+
+    @GetMapping("/result")
+    public String getResult(@RequestParam("requestId") String requestId, Model model) {
+        CryptoResponse response = (CryptoResponse) redisTemplate.opsForValue().get(requestId);
+
+        model.addAttribute("result", response.getResultText());
+        model.addAttribute("message", "Зашифрованный текст:");
+
+        return "result";
+
+    }
+}
 ```
 
-- **создание Docker Image**
+- **Сервис ConsumerService**
+```java
+@Service
+public class ConsumerService {
 
-```cmd
-docker build -t rruslek/imagic-spring .
+    private static final String ENCRYPTION_QUEUE = "encryption_queue";
+    private static final String DECRYPTION_QUEUE = "decryption_queue";
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Scheduled(fixedRate = 1000)
+    public void processEncryptionRequest() throws InterruptedException {
+        CryptoRequest request = (CryptoRequest) redisTemplate.opsForList().rightPop(ENCRYPTION_QUEUE);
+        if (request != null) {
+            String textToEncrypt = request.getText();
+            String key = request.getKey();
+            String requestId = request.getRequestId();
+            try {
+                String encryptedText = encrypt(textToEncrypt, key);
+                CryptoResponse response = new CryptoResponse(encryptedText, requestId);
+                redisTemplate.opsForValue().set(requestId, response);
+                System.out.println("Encryption Request ID: " + requestId + ", Encrypted: " + encryptedText);
+
+            } catch (Exception e) {
+                System.err.println("Error encrypting: " + e.getMessage());
+            }
+        }
+    }
+
+    @Scheduled(fixedRate = 1000)
+    public void processDecryptionRequest() throws InterruptedException {
+        CryptoRequest request = (CryptoRequest) redisTemplate.opsForList().rightPop(DECRYPTION_QUEUE);
+
+        if (request != null) {
+            String textToDecrypt = request.getText();
+            String key = request.getKey();
+            String requestId = request.getRequestId();
+
+            try {
+                String decryptedText = decrypt(textToDecrypt, key);
+                CryptoResponse response = new CryptoResponse(decryptedText, requestId);
+                redisTemplate.opsForValue().set(requestId, response);
+
+                System.out.println("Decryption Request ID: " + requestId + ", Decrypted: " + decryptedText);
+
+            } catch (Exception e) {
+                System.err.println("Error decrypting: " + e.getMessage());
+            }
+        }
+    }
+
+
+    private String encrypt(String strToEncrypt, String secret) throws Exception {
+        try {
+            SecretKeySpec secretKey = new SecretKeySpec(secret.getBytes("UTF-8"), "AES");
+            Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+            return Base64.getEncoder().encodeToString(cipher.doFinal(strToEncrypt.getBytes("UTF-8")));
+        } catch (Exception e) {
+            System.out.println("Error while encrypting: " + e);
+            throw e;
+        }
+    }
+
+
+    private String decrypt(String strToDecrypt, String secret) throws Exception {
+        try {
+            SecretKeySpec secretKey = new SecretKeySpec(secret.getBytes("UTF-8"), "AES");
+            Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+            cipher.init(Cipher.DECRYPT_MODE, secretKey);
+            return new String(cipher.doFinal(Base64.getDecoder().decode(strToDecrypt)));
+        } catch (Exception e) {
+            System.out.println("Error while decrypting: " + e);
+            throw e;
+        }
+    }
+}
 ```
 
-- **push в Docker Hub**
+- **Модель CryptoRequest**
+```java
+public class CryptoRequest implements Serializable {
+    private String text;
+    private String key;
+    private String requestId;
 
-```cmd
-docker push rruslek/imagic-spring
+    public CryptoRequest(String text, String key, String requestId) {
+        this.text = text;
+        this.key = key;
+        this.requestId = requestId;
+    }
+
+    public String getText() {
+        return text;
+    }
+
+    public String getKey() {
+        return key;
+    }
+
+    public String getRequestId() {
+        return requestId;
+    }
+
+}
 ```
 
-После подготовки необходимо было создать два файла:
+- **Модель CryptoResponse**
+```java
+public class CryptoResponse implements Serializable {
+    private String resultText;
+    private String requestId;
 
-- **service.yaml**
+    public CryptoResponse(String resultText, String requestId) {
+        this.resultText = resultText;
+        this.requestId = requestId;
+    }
 
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: imagic
+    public String getResultText() {
+        return resultText;
+    }
 
-spec:
-  type: LoadBalancer
-  selector:
-    app: imagic
-  ports:
-    - protocol: TCP
-      name: http-traffic
-      port: 8080
-      targetPort: 8080
+    public String getRequestId() {
+        return requestId;
+    }
+}
 ```
 
-- **deployment.yaml**
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: imagic
-
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: imagic
-  template:
-    metadata:
-      labels:
-        app: imagic
-    spec:
-      containers:
-        - name: imagic
-          image: rruslek/imagic-spring
-          ports:
-            - containerPort: 8080
-```
-
-После их создания, а также предварительно установив Minikube, можно приступать к запуску приложения в Kubernetes.
-
-Команды для работы c Minikube:
-
-- **запуск minikube**
-
-```cmd
-minikube start
-```
-
-- **остановка minikube**
-
-```cmd
-minikube stop
-```
-
-- **применение файлов**
-
-```cmd
-kubectl apply -f deployment.yaml
-kubectl apply -f service.yaml
-```
-
-
-- **просмотр логов**
-
-```cmd
-kubectl logs <pod-name>
-```
-
-- **просмотр панели управления**
-
-```cmd
-kubectl dashboard
-```
-
-- **работа с локальными запросами**
-
-```cmd
-minikube tunnel
-```
+Алгоритм работы приложения:
+- Пользователь вводит текст для шифрования/дешифровки 
+- Данные с неравномерной задержкой добавляются в Redis Queue с помощью контроллера
+- Сервис с определенной задержкой забирает их из Redis Queue
+- Пользователь получает результат шифрования/дешифровки
 
 ## <a id="conclusion" style="color: lightgrey">3. Выводы</a>

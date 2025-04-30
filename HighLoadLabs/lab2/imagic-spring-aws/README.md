@@ -1,5 +1,5 @@
-# Лабораторная работа №4
-## Реализация запуска приложения в Kubernetes
+# Лабораторная работа №2
+## Реализация разделяемого хранилища данных с использованием Redis
 
 ### Содержание
 
@@ -11,134 +11,166 @@
 
 ## <a id="task" style="color: lightgrey">1. Постановка задачи
 
-- #### Пройти "Interactive Tutorial" по Kubernetes/Minikube
-- #### Создать yaml файлы для работы с Kubernetes
-- #### Управлять развертыванием контейнеров с использованием kubectl
+- #### Пройти интерактивный redis tutorial
+- #### Запустить redis
+- #### Доработать приложение из предыдущей лабораторной работы таким образом, чтобы счетчик входящих запросов хранился в redis.
+- #### Доработать приложение, создав соответствующий HTTP REST API, чтобы в redis использовалась структура Redis Sorted Set. Самый распространенный пример: список игроков, набравших максимальное число очков в игре (Gaming Leaderboards) [3,4]
 
 ## <a id="implementation" style="color: lightgrey">2. Решение</a>
 
-Для работы было использовано веб-приложение, разработанное в рамках лабораторных работы №3.
+Для работы было использовано веб-приложение, разработанное в рамках лабораторных работы №1.
 
-Перед использованием Minikube, необходимо было создать Docker Image и сделать "push" в Docker Hub.
+Для использования Redis были реализованы файлы:
 
-Для этого был создан Dockerfile:
+- **Конфигурация RedisConfig**
+```java
+@Configuration
+public class RedisConfig {
 
-```Dockerfile
-FROM openjdk:21-jdk
+    @Bean
+    public JedisConnectionFactory jedisConnectionFactory()
+    {
+        return new JedisConnectionFactory();
+    }
 
-ARG JAR_FILE=target/*.jar
-COPY ${JAR_FILE} app.jar
+    @Bean
+    public RedisTemplate<String, String> redisTemplate(JedisConnectionFactory connectionFactory) {
+        RedisTemplate<String, String> template = new RedisTemplate<>();
+        template.setConnectionFactory(connectionFactory);
 
-EXPOSE 8080
-ENTRYPOINT ["java","-jar","/app.jar"]
+        template.setKeySerializer(new StringRedisSerializer());
+        template.setHashKeySerializer(new StringRedisSerializer());
+        template.setHashValueSerializer(new GenericToStringSerializer<>(Integer.class));
+
+        return template;
+    }
+}
 ```
 
-Далее были использованы команды :
+- **Сервис ClickService**
+```java
+@Service
+public class ClickService {
 
-- **сборка JAR файла**
+    private final RedisTemplate<String, String> redisTemplate;
+    private final ZSetOperations<String, String> zSetOperations;
 
+    private static final String KEY = "leaderboard";
+
+    public ClickService(RedisTemplate<String, String> redisTemplate) {
+        this.redisTemplate = redisTemplate;
+        this.zSetOperations = redisTemplate.opsForZSet();
+    }
+
+    public void initUserIfAbsent(String username) {
+        Double score = zSetOperations.score(KEY, username);
+        if (score == null) {
+            zSetOperations.add(KEY, username, 0.0);
+        }
+    }
+
+    public void incrementClick(String username) {
+        zSetOperations.incrementScore(KEY, username, 1);
+    }
+
+    public int getClicks(String username) {
+        Double score = zSetOperations.score(KEY, username);
+        return score != null ? score.intValue() : 0;
+    }
+
+    public List<Map.Entry<String, Integer>> getTopUsers(int limit) {
+        Set<ZSetOperations.TypedTuple<String>> set = zSetOperations.reverseRangeWithScores(KEY, 0, limit - 1);
+        if (set == null) return List.of();
+
+        return set.stream()
+                .map(e -> Map.entry(e.getValue(), e.getScore().intValue()))
+                .toList();
+    }
+}
+```
+
+- **Контроллер CounterController**
+```java
+@Controller
+public class CounterController {
+
+    private final ClickService clickService;
+
+    public CounterController(ClickService clickService) {
+        this.clickService = clickService;
+    }
+
+    @GetMapping("/")
+    public String home(@CookieValue(value = "username", required = false) String username, Model model) {
+        if (username == null || username.isEmpty()) {
+            return "login";
+        }
+
+        long clicks = clickService.getClicks(username);
+        model.addAttribute("username", username);
+        model.addAttribute("clicks", clicks);
+        model.addAttribute("leaders", clickService.getTopUsers(10));
+        return "index";
+    }
+
+    @PostMapping("/set-name")
+    public String setName(@RequestParam String username, HttpServletResponse response) {
+        Cookie cookie = new Cookie("username", username);
+        cookie.setPath("/");
+        cookie.setMaxAge(7 * 24 * 60 * 60); // 7 дней
+        response.addCookie(cookie);
+
+        // создаём запись в Redis если новой нет
+        clickService.initUserIfAbsent(username);
+
+        return "redirect:/";
+    }
+
+    @PostMapping("/click")
+    public String click(@CookieValue("username") String username) {
+        clickService.incrementClick(username);
+        return "redirect:/";
+    }
+}
+```
+
+- **Модель User**
+```java
+public class User implements Serializable {
+    private int score = 0;
+    private int id;
+    private String name;
+
+    public Integer getId() {
+        return id;
+    }
+
+    public void setId(Integer id) {
+        this.id = id;
+    }
+    public String getName() {
+        return name;
+    }
+    public Integer getScore() {
+        return score;
+    }
+
+    public void addScore() {
+        this.score = score+1;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+}
+```
+
+Данное приложение представляет собой игру-кликер, с таблицей лидеров по кликам. При первом входе пользователь вводит свое имя, после этого оно сохраняется в Cookies.
+
+Для работы приложения, с помощью Docker был запущен Redis, была использована следующая команда:
 ```cmd
-mvn clean package
-```
-
-- **создание Docker Image**
-
-```cmd
-docker build -t rruslek/imagic-spring .
-```
-
-- **push в Docker Hub**
-
-```cmd
-docker push rruslek/imagic-spring
-```
-
-После подготовки необходимо было создать два файла:
-
-- **service.yaml**
-
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: imagic
-
-spec:
-  type: LoadBalancer
-  selector:
-    app: imagic
-  ports:
-    - protocol: TCP
-      name: http-traffic
-      port: 8080
-      targetPort: 8080
-```
-
-- **deployment.yaml**
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: imagic
-
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: imagic
-  template:
-    metadata:
-      labels:
-        app: imagic
-    spec:
-      containers:
-        - name: imagic
-          image: rruslek/imagic-spring
-          ports:
-            - containerPort: 8080
-```
-
-После их создания, а также предварительно установив Minikube, можно приступать к запуску приложения в Kubernetes.
-
-Команды для работы c Minikube:
-
-- **запуск minikube**
-
-```cmd
-minikube start
-```
-
-- **остановка minikube**
-
-```cmd
-minikube stop
-```
-
-- **применение файлов**
-
-```cmd
-kubectl apply -f deployment.yaml
-kubectl apply -f service.yaml
-```
-
-
-- **просмотр логов**
-
-```cmd
-kubectl logs <pod-name>
-```
-
-- **просмотр панели управления**
-
-```cmd
-kubectl dashboard
-```
-
-- **работа с локальными запросами**
-
-```cmd
-minikube tunnel
+docker run --name my-redis -p 6379:6379 -d redis
 ```
 
 ## <a id="conclusion" style="color: lightgrey">3. Выводы</a>

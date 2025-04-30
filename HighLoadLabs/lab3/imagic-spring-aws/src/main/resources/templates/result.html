@@ -1,0 +1,16 @@
+<!DOCTYPE HTML>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <title>Результат</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+<div class="container">
+  <h1>Результат</h1>
+  <p th:text="${message}"></p>
+  <div class="result-box" th:text="${result}"></div>
+  <a href="/" class="button">Попробовать еще</a>
+</div>
+</body>
+</html>

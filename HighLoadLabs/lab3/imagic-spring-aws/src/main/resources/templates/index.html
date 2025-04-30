@@ -1,0 +1,39 @@
+<!DOCTYPE HTML>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <title>AES Encryption/Decryption</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+<div class="container">
+  <h1>Шифрование AES</h1>
+
+  <div class="crypto-form-container">
+    <div class="crypto-form" id="encryptForm">
+      <h2>Шифрование</h2>
+      <form action="/encrypt" method="post">
+        <label for="encryptText">Текст:</label>
+        <textarea id="encryptText" name="text" rows="5" cols="50"></textarea><br/>
+        <label for="encryptKey">Ключ:</label>
+        <input type="text" id="encryptKey" name="key"  placeholder="128, 192 или 256 бит"/><br/>
+        <input type="submit" value="Зашифровать" class="button"/>
+      </form>
+    </div>
+
+    <div class="crypto-form" id="decryptForm">
+      <h2>Расшифровка</h2>
+      <form action="/decrypt" method="post">
+        <label for="decryptText">Текст:</label>
+        <textarea id="decryptText" name="text" rows="5" cols="50"></textarea><br/>
+        <label for="decryptKey">Ключ:</label>
+        <input type="text" id="decryptKey" name="key" placeholder="128, 192 или 256 бит"/><br/>
+        <input type="submit" value="Расшифровать" class="button"/>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="/js/script.js"></script>
+</body>
+</html>

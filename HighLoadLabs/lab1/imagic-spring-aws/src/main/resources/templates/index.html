@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Счетчик</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #f4f4f4;
+        }
+        .container {
+            text-align: center;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        .update-btn {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .reset-btn {
+            background-color: #f44336;
+            color: white;
+        }
+    </style>
+    <script>
+        function updateCounter() {
+            fetch('/counter')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('counter').innerText = data.counter;
+                });
+        }
+
+        function resetCounter() {
+            fetch('/counter/reset', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('counter').innerText = data.counter;
+                });
+        }
+    </script>
+</head>
+<body>
+<div class="container">
+    <h1>Счетчик</h1>
+    <p id="counter" th:text="${counter}">0</p>
+    <button class="update-btn" onclick="updateCounter()">Обновить</button>
+    <button class="reset-btn" onclick="resetCounter()">Сбросить</button>
+</div>
+</body>
+</html>

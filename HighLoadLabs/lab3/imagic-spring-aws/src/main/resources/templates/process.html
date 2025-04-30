@@ -1,0 +1,16 @@
+<!DOCTYPE HTML>
+<html xmlns:th="http://www.thymeleaf.org">
+    <head>
+        <title>Обработка</title>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        <link rel="stylesheet" href="/css/style.css"/>
+        <meta http-equiv="refresh" th:content="|10; url=@{/result(requestId=${requestId})}|">
+    </head>
+<body>
+<div class="container">
+    <h1>Обработка</h1>
+    <p th:text="${message}"></p>
+    <p>Пожалуйста подождите...</p>
+</div>
+</body>
+</html>
